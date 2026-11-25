@@ -1,0 +1,58 @@
+{
+  "app": "jev-chat-windows",
+  "app_version": "v0.1.12",
+  "patch": "判断模型支持自定义 OpenAI 兼容来源",
+  "built_by": "3.11.9",
+  "original": {
+    "sha256": "4f0b79c63cbfbb283edcac71c32c07c038089127cb7c2926c9d6a3126119fec8",
+    "size": 18632863
+  },
+  "patched": {
+    "sha256": "f6d475a892e82486f82f76ef83ae1e1d18ae7ee1ebe3606030b65ce327a4b2a0",
+    "size": 18712150
+  },
+  "archive_start": 320000,
+  "main_entry": {
+    "offset": 27636,
+    "length": 8713,
+    "file": "main.bin"
+  },
+  "pyz": {
+    "offset": 36349,
+    "length": 18275786,
+    "data_start": 17,
+    "toc_offset": 17934003,
+    "header_file": "pyz-header.bin",
+    "header_length": 17,
+    "new_toc_offset": 18013143,
+    "append_file": "pyz-append.bin",
+    "toc_file": "pyz-toc.bin"
+  },
+  "carchive": {
+    "toc_file": "carchive-toc.bin",
+    "cookie_file": "carchive-cookie.bin"
+  },
+  "modules": [
+    "app.overlay",
+    "app.settings",
+    "core.engine",
+    "core.jev_client",
+    "core.providers"
+  ],
+  "source_sha256": {
+    "app/overlay.py": "784113e06fe61490863e65cf8f5033a90dfb905d26f328a9c04c02d3a13bfc3b",
+    "app/settings.py": "21ac78dabc5056f7a21ba4fa089f747404997b6c2c13440db3364f1d309e379e",
+    "core/engine.py": "a076a5aa493ff1200de70566514da0364edd24e15f60407a74b70ae465e6df65",
+    "core/jev_client.py": "c0a784cadeb37fef5d2c438aa907e9edaddf3dc1094de134c1c6f92a769cc0cf",
+    "core/providers.py": "a1cec53f7c1163c2fc440403c7a05491806044184290dc37f1a086acd2ff369a",
+    "main.py": "d87e812dfd48937645e784b00ff379809c0f8b9b8ec1c9ac418198cab706baa4"
+  },
+  "payload_sha256": {
+    "carchive-cookie.bin": "678295f0d2d4aa49b33cfa6bae6f3964867d5ccb7373682c6e48d420b9a2c731",
+    "carchive-toc.bin": "ce1457d21d5729510406f44951e2c2b3c90cade86c02a2b300f49e22aa63dea4",
+    "main.bin": "0fbf39c74cb8b2a0932589839f2be88c5505b88d884079e3ee09a339773c7bff",
+    "pyz-append.bin": "f76133edeef4baac4069690adbc5a2d676fc86a95bbd0ed80caa185d487244a9",
+    "pyz-header.bin": "d2865dbbb5e28a8d029ba69115dd0db1f0991afdec6a0a456e2390b0c5dc7ab3",
+    "pyz-toc.bin": "5c0e57cc64996b5b962ee3c89f9bdb69b584f178a8c89d7a12eb7ecdf636ba21"
+  }
+}

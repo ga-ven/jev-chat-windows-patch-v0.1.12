@@ -1,0 +1,12 @@
+# 补丁载荷是按字节拼进 exe 的，任何换行符转换都会让 hash 对不上
+*.bin binary
+
+# Windows 上双击运行的脚本用 CRLF 最稳
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 其余文本统一 LF
+*.py    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.txt   text eol=lf
