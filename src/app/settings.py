@@ -106,6 +106,15 @@ def auto_fill() -> bool:
     比 auto_send 更进一步——那个还要人点一下，这个连点都省了。"""
     return bool(_read("auto_fill", False))
 
+def multi_send() -> bool:
+    """分条发送：一条回复拆成 2~3 条发出去，像真人一句一句说。默认关。"""
+    return bool(_read("multi_send", False))
+
+def real_at() -> bool:
+    """真 @：输入 @ 再从微信弹窗里选中人，对方会收到提醒。
+    默认关 —— 纯文本 @ 不会选错人，这个要赌弹窗里的匹配。"""
+    return bool(_read("real_at", False))
+
 def _read_env(env_name: str) -> str:
     """进程环境优先；没有就读注册表并带进进程环境，之后 core/ 里按 os.environ 读就有了。"""
     v = os.environ.get(env_name, "").strip()
@@ -174,6 +183,7 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
          style_text: str | None = None, thinking_on: bool | None = None,
          check_update_on: bool | None = None, debug_view_on: bool | None = None,
          auto_send_on: bool | None = None, auto_fill_on: bool | None = None,
+         multi_send_on: bool | None = None, real_at_on: bool | None = None,
          lang_text: str | None = None) -> None:
     """每个参数为空/None = 保留当前值。两把 key 写进程环境 + HKCU\\Environment，不写任何文件。"""
     jev = jev_provider_text if jev_provider_text in JEV_PROVIDERS else jev_provider()
@@ -207,6 +217,8 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
         "debug_view": flag(debug_view_on, debug_view),
         "auto_send": flag(auto_send_on, auto_send),
         "auto_fill": flag(auto_fill_on, auto_fill),
+        "multi_send": flag(multi_send_on, multi_send),
+        "real_at": flag(real_at_on, real_at),
     }
     lang = _read("lang") if lang_text is None else lang_text.strip().lower()
     if lang is not None:

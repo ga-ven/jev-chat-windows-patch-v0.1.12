@@ -9,7 +9,10 @@
 import ctypes
 import multiprocessing
 import queue
+import random
+import re
 import threading
+import time
 import traceback
 from collections import deque
 
@@ -44,6 +47,33 @@ def target_of(title):
     return chat["senders"][0] if chat["senders"] else None
 
 
+def split_reply(text, limit=3):
+    """把一条回复拆成 2~3 段，像真人一句一句发。
+    先按句末标点切，切不开再按逗号/空格切；太碎的片段并回前一段。
+    拆不出两个像样的片段就整条发，别硬拆成刷屏。"""
+    if len(text) < 12:
+        return [text]
+    parts = re.split(r"(?<=[。！？!?~…])", text)
+    if len(parts) < 2:
+        parts = re.split(r"[，,、\s]+", text)
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) < 2:
+        return [text]
+    merged = []
+    for p in parts:
+        if merged and len(merged[-1]) < 8:  # 太短的并到前一段，免得一句只有两个字
+            # 上一段以句末标点结尾就直接接，否则补个空格——原来是按空格拆开的，
+            # 拼回去不加空格会连成「女老师的话先确认下有没有合适的」这种。
+            tail = merged[-1][-1:]
+            merged[-1] += ("" if tail in "。！？!?…~" else " ") + p
+        else:
+            merged.append(p)
+    while len(merged) > limit:
+        merged[-2] += merged[-1]
+        merged.pop()
+    return merged if len(merged) >= 2 else [text]
+
+
 def fill_reply(text):
     # 每次填之前重新找窗口：微信重建窗口后（切账号、退出重登）旧句柄会落到一个
     # 160x28 的托盘小窗上，拿它算出来的点击坐标全在屏幕外，点了等于没点。
@@ -54,12 +84,19 @@ def fill_reply(text):
         raise RuntimeError(T("未找到聊天窗口，请确认已经打开"))
     if state["area"] is None:
         raise RuntimeError(T("输入区域尚不可用，请确认聊天窗口可见（不要最小化）"))
+    auto = settings.auto_send() or settings.auto_fill()
+    target = None
     if settings.reply_target() and ov.at_prefix_enabled():
         target = target_of(ov.current_chat())  # 填进去的是界面上正看着的那个会话的对象
-        if target:
-            text = f"@{target} " + text  # 纯文本，微信不认成真正的 @，只是让群里看得出在跟谁说
-    fill(state["hwnd"], state["area"], text,
-         auto_send=settings.auto_send() or settings.auto_fill())
+        if target and not settings.real_at():
+            text = f"@{target} " + text  # 纯文本 @，微信不认成真正的 @，对方收不到通知
+    # 分条只在会自动发的时候有意义：不开自动发送，几条会全堆在输入框里等着被一起发出去
+    parts = split_reply(text) if (settings.multi_send() and auto) else [text]
+    for i, part in enumerate(parts):
+        at = target if (settings.real_at() and settings.reply_target() and i == 0) else None
+        fill(state["hwnd"], state["area"], part, auto_send=auto, at_target=at)
+        if i < len(parts) - 1:
+            time.sleep(random.uniform(1.8, 3.2))  # 真人打字也有停顿，连发会像机器人
 
 
 def spawn_worker():

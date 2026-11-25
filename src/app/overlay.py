@@ -603,6 +603,30 @@ class Overlay:
             "留 1.5 秒缓冲，这期间关掉开关或切走会话就不发了。"
             "只在微信当前开着的那个会话上生效，浏览别的会话时不填。"
         ))
+        multi_row = QHBoxLayout()
+        multi_row.addWidget(_tlabel("分条发送", 13), 1)
+        self.multiSwitch = SwitchButton()
+        bind(self.multiSwitch, "开", "setOnText")
+        bind(self.multiSwitch, "关", "setOffText")
+        bind(self.multiSwitch, "分条发送", "setAccessibleName")
+        multi_row.addWidget(self.multiSwitch)
+        box.addLayout(multi_row)
+        box.addWidget(self._hint(
+            "一条回复拆成 2~3 条发出去，像真人一句一句说。只在自动发送开着时有用"
+            "（没开的话几条会全堆在输入框里）。拆不出合适的分句就整条发。"
+        ))
+        at_row = QHBoxLayout()
+        at_row.addWidget(_tlabel("回复时真 @ 对方", 13), 1)
+        self.realAtSwitch = SwitchButton()
+        bind(self.realAtSwitch, "开", "setOnText")
+        bind(self.realAtSwitch, "关", "setOffText")
+        bind(self.realAtSwitch, "回复时真 @ 对方", "setAccessibleName")
+        at_row.addWidget(self.realAtSwitch)
+        box.addLayout(at_row)
+        box.addWidget(self._hint(
+            "输入 @ 再从微信弹窗里选中人，对方会收到真的提醒。关着时只在文字前面加「@名字」，"
+            "对方收不到通知。群里有重名或名字太长时可能选中别人，第一次开先用小号试一下。"
+        ))
         update_row = QHBoxLayout()
         update_row.addWidget(_tlabel("启动时检查更新", 13), 1)
         self.updateSwitch = SwitchButton()
@@ -898,6 +922,8 @@ class Overlay:
         self.updateSwitch.setChecked(settings.check_update())
         self.autoSendSwitch.setChecked(settings.auto_send())
         self.autoFillSwitch.setChecked(settings.auto_fill())
+        self.multiSwitch.setChecked(settings.multi_send())
+        self.realAtSwitch.setChecked(settings.real_at())
         self.set_debug_switch(settings.debug_view())  # 屏蔽信号地拨，别在加载时开关一遍窗口
         self._sync_model_fields()  # 上面屏蔽了信号，这里补一次
         if hasattr(self, "footerLabel"):  # 设置页比底部那行先建出来，首次加载时还没有它
@@ -949,7 +975,9 @@ class Overlay:
                           thinking_on=self.thinkingSwitch.isChecked(),
                           check_update_on=self.updateSwitch.isChecked(),
                           auto_send_on=self.autoSendSwitch.isChecked(),
-                          auto_fill_on=self.autoFillSwitch.isChecked())
+                          auto_fill_on=self.autoFillSwitch.isChecked(),
+                          multi_send_on=self.multiSwitch.isChecked(),
+                          real_at_on=self.realAtSwitch.isChecked())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return

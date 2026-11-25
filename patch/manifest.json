@@ -8,8 +8,8 @@
     "size": 18632863
   },
   "patched": {
-    "sha256": "fd2be7af80a9958f18281b49b13d0dfcdfb2d10585f45511c9c26f37dfd163d4",
-    "size": 18741859
+    "sha256": "98acfbc0697bcc73ec4b1e41885a69988f4ecc318671f85e4e3f584c4907b098",
+    "size": 18744485
   },
   "archive_start": 320000,
   "main_entry": {
@@ -24,7 +24,7 @@
     "toc_offset": 17934003,
     "header_file": "pyz-header.bin",
     "header_length": 17,
-    "new_toc_offset": 18042550,
+    "new_toc_offset": 18043821,
     "append_file": "pyz-append.bin",
     "toc_file": "pyz-toc.bin"
   },
@@ -45,22 +45,22 @@
   ],
   "source_sha256": {
     "app/capture.py": "f1a8997c0d825c29abaf695b2e0153b6c30045f269f6ef40a6e5228ee1782e14",
-    "app/fill.py": "d72b195b275c6489af79164d7b672f49167161890d614066093a0c632d52cfc9",
+    "app/fill.py": "1e73578abe81caf99f623e89fc5fcfd74d5d3938e38d0ab120e1bbbc621215b6",
     "app/ocr.py": "1afc7770b1da558ae0cb4ef6c7a631ff562b29d50c7d912ce3053e79f2052495",
-    "app/overlay.py": "3360d54b8aed2b1c69821b35c366d24581bd2e5349f059cba15d342cd480b8ef",
-    "app/settings.py": "94182fb9cdf870f8e90e5e4678cdcd08d2328c59759b4df5d670e21e9426eecd",
+    "app/overlay.py": "6276aaf17b7c0ca689adaf6ede1a85f16ae87efcfeb8f2e5f44514a0b0e238f3",
+    "app/settings.py": "799a10486ced42d5d2bc3d462951820d68f730c44d4adf859ab3f20ec1c25aa8",
     "app/worker.py": "fa58e4c3dc2c4e251fc9a0efd41f84b4d9fa95855ac48131a1658af94d27984c",
     "core/engine.py": "a076a5aa493ff1200de70566514da0364edd24e15f60407a74b70ae465e6df65",
     "core/jev_client.py": "c0a784cadeb37fef5d2c438aa907e9edaddf3dc1094de134c1c6f92a769cc0cf",
     "core/providers.py": "a1cec53f7c1163c2fc440403c7a05491806044184290dc37f1a086acd2ff369a",
-    "main.py": "6ecdf561fab5fe1adf0f941f0656da690ab03f3ec9d69cd7de2cb526de5bcbb0"
+    "main.py": "b5a8af7c2fd75720d77a61c3a11402e1185c41c10b98e8d5ef9dea7a5c858aac"
   },
   "payload_sha256": {
-    "carchive-cookie.bin": "12028b7252c6c3409d042e4c23ccea876bde6574dc27255c15e3f5f73d1ee545",
-    "carchive-toc.bin": "695a59ff25940f5d62386a94166d68e58e6b5eb5c10475c33b8eae09bfce938c",
-    "main.bin": "713d4ecf3581427774fd4d4456f4708ee7c6e09a0f10cb689b6fc4bd792e1a09",
-    "pyz-append.bin": "4e30a739d8203955d7e8c1848f07bdbe6e1536a640c7fc25d1d8a1a7b7581226",
-    "pyz-header.bin": "3f015882e378f6c7908b86ff8e1ace9988588883e4f9ff1fddf0201bcf127564",
-    "pyz-toc.bin": "cc51fa8df69cc647cf021a273d8988e29a36b63c83feac88ef43e8a4c4188bc2"
+    "carchive-cookie.bin": "0e20311ffc4ceb0bb9d640fb6ea35299bcdd66293901cacca0559d07ee075707",
+    "carchive-toc.bin": "f69e1016590ce745ca01ea8434359cb782acd113dbe2a2fbc4d011d212a31797",
+    "main.bin": "e0c4432688befbf645268c555dfabcd48d6f5668e81ab747c3ae822098b6c96b",
+    "pyz-append.bin": "0a82e522a1351255ed3a91011e566943410610b97f265b0dfc1f72f37b2108e1",
+    "pyz-header.bin": "e78c19a6ec1f96fffd7e9a33f42d2d48ef3452a886d2b555372a18537e28c1f4",
+    "pyz-toc.bin": "2b3eff2f4fc1916a42f7b5dfd123ef11df3fe7deb0e0564b50ebc57ec7b9e6e4"
   }
 }

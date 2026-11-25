@@ -97,7 +97,7 @@ def type_text(text):
         time.sleep(0.004)  # 敲太快微信会丢字
 
 
-def fill(hwnd, area, text, auto_send=False):
+def fill(hwnd, area, text, auto_send=False, at_target=None):
     """area = 消息区 (x0, y0, x1, y1)；输入框就在底线 y1 下面。"""
     from app.capture import unminimize
 
@@ -159,6 +159,14 @@ def fill(hwnd, area, text, auto_send=False):
     u32.keybd_event(0x23, 0, 2, 0)  # End 抬起
     u32.keybd_event(0x11, 0, 2, 0)  # Ctrl 抬起
     time.sleep(0.05)
+    if at_target:
+        # 真 @：打「@名字」让微信弹出成员列表并过滤，再回车选中第一个匹配。
+        # 选不中的话输入框里就留着「@名字」这段文字，正文接上去等于退化成纯文本 @，不会更糟。
+        type_text("@" + at_target)
+        time.sleep(0.45)
+        u32.keybd_event(0x0D, 0, 0, 0)  # VK_RETURN：选中弹窗里第一项
+        u32.keybd_event(0x0D, 0, 2, 0)
+        time.sleep(0.25)
     if paste:
         u32.keybd_event(0x11, 0, 0, 0)  # Ctrl
         u32.keybd_event(0x56, 0, 0, 0)  # V
