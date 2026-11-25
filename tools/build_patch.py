@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""从官方 v0.1.11 的 jev-chat-windows.exe 生成补丁包（写进 patch/）。
+"""从官方 v0.1.12 的 jev-chat-windows.exe 生成补丁包（写进 patch/）。
 
 补的是什么：把 5 个模块的新字节码塞进 exe 里的 PYZ，再把新的 main 脚本塞进 CArchive。
 输出的是给 patch/apply.ps1 用的几段二进制 + manifest.json，不是重新打包一个 exe 出来。
@@ -7,6 +7,10 @@
 用法（必须 Python 3.11——exe 里的字节码是 3.11 的，别的版本编译出来的塞不进去）：
     python tools/build_patch.py --exe "C:\\path\\jev-chat-windows.exe"
     python tools/build_patch.py --exe ... --patched-exe dist\\patched.exe   # 顺手导出打好的 exe
+    python tools/build_patch.py --exe ... --app-version v0.1.12             # 指定写进 manifest 的版本号
+
+这份脚本取自 XiaoRui114514/jev-chat-windows-custom-jev（原本写死 v0.1.11），
+这里只加了 --app-version，让 manifest 的版本号能跟着实际目标版本走。
 
 PYZ / CArchive 的格式照 PyInstaller 自己的 PyInstaller/archive/readers.py 和 writers.py 来。
 """
