@@ -45,7 +45,12 @@ def target_of(title):
 
 
 def fill_reply(text):
-    if state["hwnd"] is None:  # 子进程重开过，hwnd 可能换了，用最新的
+    # 每次填之前重新找窗口：微信重建窗口后（切账号、退出重登）旧句柄会落到一个
+    # 160x28 的托盘小窗上，拿它算出来的点击坐标全在屏幕外，点了等于没点。
+    try:
+        hwnd, found = find_chat_hwnd()
+        state["hwnd"], state["app"] = hwnd, found.key
+    except RuntimeError:
         raise RuntimeError(T("未找到聊天窗口，请确认已经打开"))
     if state["area"] is None:
         raise RuntimeError(T("输入区域尚不可用，请确认聊天窗口可见（不要最小化）"))
@@ -53,7 +58,8 @@ def fill_reply(text):
         target = target_of(ov.current_chat())  # 填进去的是界面上正看着的那个会话的对象
         if target:
             text = f"@{target} " + text  # 纯文本，微信不认成真正的 @，只是让群里看得出在跟谁说
-    fill(state["hwnd"], state["area"], text)
+    fill(state["hwnd"], state["area"], text,
+         auto_send=settings.auto_send() or settings.auto_fill())
 
 
 def spawn_worker():
@@ -222,7 +228,10 @@ def drain():
                     chat["senders"].remove(name)
                 chat["senders"].insert(0, name)
         ov.set_targets(title, chat["senders"], target_of(title))  # 显不显示这一行由悬浮窗按开关决定
-        if new[-1][0] == "her":  # 只有对方最新说话才值得分析
+        # 只要这批新消息里有对方说的话，就该分析——不必等「最后一条是对方」。
+        # 原来要求 new[-1] 是 her，导致自己刚说完话、对方后面又接了一句时它不动。
+        # 反过来，整批都是自己发的就什么都不做：别自己接自己的话。
+        if any(who == "her" for who, _, _ in new):
             msgs = list(chat["history"])
             if state["busy"]:
                 state["rerun"] = (title, msgs)
@@ -254,7 +263,7 @@ def tick():
             if kind == "ok":
                 chat_of(title)["result"] = r  # 先存着；正看着这个会话才立刻贴上去
                 if title == ov.current_chat():
-                    ov.show(r)
+                    ov.show(r, auto=True)  # 刚生成、且正看着这个会话——全自动只认这种
                 else:
                     ov.set_busy(False)
             else:

@@ -260,6 +260,8 @@ class Overlay:
         self.targets = {}  # {会话名: ([发言人], 当前回复对象)}
         self._chat = ""  # 微信当前开着的会话
         self._shown = ""  # 界面上正在看的会话（浏览时和上面不一样）
+        self._best = 0  # 当前候选里推荐那条在 cands 里的原始索引
+        self._auto_filled = None  # 上一次全自动发出去的内容，同一段不重复发
         self.win = _MainWindow(self._relayout)
         self.win.setObjectName("assistantWindow")
         self.win.setWindowTitle("JevChat-Windows")
@@ -320,7 +322,8 @@ class Overlay:
         self._build_settings()
         footer = QHBoxLayout()
         footer.setContentsMargins(20, 9, 8, 8)
-        footer.addWidget(_tlabel(lambda: f"{T('仅填入输入框 · 发送由你确认')} · v{VERSION}", 11, _MUTED), 1)
+        self.footerLabel = _tlabel(self._footer_text, 11, _MUTED)
+        footer.addWidget(self.footerLabel, 1)
         grip = QSizeGrip(self.win)
         grip.setFixedSize(16, 16)
         footer.addWidget(grip, 0, Qt.AlignBottom)
@@ -575,6 +578,31 @@ class Overlay:
         box.addWidget(self._hint(
             "开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。"
         ))
+        send_row = QHBoxLayout()
+        send_row.addWidget(_tlabel("填入后自动发送", 13), 1)
+        self.autoSendSwitch = SwitchButton()
+        bind(self.autoSendSwitch, "开", "setOnText")
+        bind(self.autoSendSwitch, "关", "setOffText")
+        bind(self.autoSendSwitch, "填入后自动发送", "setAccessibleName")
+        send_row.addWidget(self.autoSendSwitch)
+        box.addLayout(send_row)
+        box.addWidget(self._hint(
+            "点「填入」时，粘进输入框后立刻按 Enter 发出去（微信默认的 Enter 发送）。"
+            "输入框里如果还留着你打了一半的字，会一起发出去。发送收不回来，开着用请留意。"
+        ))
+        full_row = QHBoxLayout()
+        full_row.addWidget(_tlabel("全自动回复", 13), 1)
+        self.autoFillSwitch = SwitchButton()
+        bind(self.autoFillSwitch, "开", "setOnText")
+        bind(self.autoFillSwitch, "关", "setOffText")
+        bind(self.autoFillSwitch, "全自动回复", "setAccessibleName")
+        full_row.addWidget(self.autoFillSwitch)
+        box.addLayout(full_row)
+        box.addWidget(self._hint(
+            "候选一出来就自己填进微信并发送，连「填入」都不用点——推荐那条直接发出去。"
+            "留 1.5 秒缓冲，这期间关掉开关或切走会话就不发了。"
+            "只在微信当前开着的那个会话上生效，浏览别的会话时不填。"
+        ))
         update_row = QHBoxLayout()
         update_row.addWidget(_tlabel("启动时检查更新", 13), 1)
         self.updateSwitch = SwitchButton()
@@ -651,6 +679,15 @@ class Overlay:
         label = _tlabel(text, 12, _MUTED)
         self._hintLabels.append(label)
         return label
+
+    @staticmethod
+    def _footer_text():
+        """底部那行：全自动 > 自动发送 > 手动，按当前真正生效的那档说话。"""
+        if settings.auto_fill():
+            return f"{T('全自动回复已开 · 新消息自动发出')} · v{VERSION}"
+        if settings.auto_send():
+            return f"{T('自动发送已开 · 点填入即发出')} · v{VERSION}"
+        return f"{T('仅填入输入框 · 发送由你确认')} · v{VERSION}"
 
     def _model_group(self, box, title, kind, table):
         """一组「来源 / 密钥 / 模型」控件，判断和起草各一份。table 是 core/providers.py 里那张表。"""
@@ -859,8 +896,12 @@ class Overlay:
         self.draft.baseEdit.setText(settings.draft_base_url())
         self.thinkingSwitch.setChecked(settings.thinking())
         self.updateSwitch.setChecked(settings.check_update())
+        self.autoSendSwitch.setChecked(settings.auto_send())
+        self.autoFillSwitch.setChecked(settings.auto_fill())
         self.set_debug_switch(settings.debug_view())  # 屏蔽信号地拨，别在加载时开关一遍窗口
         self._sync_model_fields()  # 上面屏蔽了信号，这里补一次
+        if hasattr(self, "footerLabel"):  # 设置页比底部那行先建出来，首次加载时还没有它
+            self.footerLabel.setText(self._footer_text())
         self.settingsFeedback.hide()
 
     def _save(self):
@@ -906,12 +947,18 @@ class Overlay:
                           reply_target_on=self.targetSwitch.isChecked(),
                           style_text=self.styleEdit.text().strip(),
                           thinking_on=self.thinkingSwitch.isChecked(),
-                          check_update_on=self.updateSwitch.isChecked())
+                          check_update_on=self.updateSwitch.isChecked(),
+                          auto_send_on=self.autoSendSwitch.isChecked(),
+                          auto_fill_on=self.autoFillSwitch.isChecked())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return
         self._load_settings()
         self._render_targets()  # 开关刚改过，回到首页时这一行该显该藏得重算一次
+        if settings.auto_fill():
+            # 全自动开着就顺手检查一次：界面上已经摆着的候选也该发出去，不然开着开关
+            # 却要干等「下一条新消息」才动，看着就像没生效。同一段内容 _auto_filled 会去重。
+            self._maybe_auto_fill()
         self._settings_feedback("设置已保存，将用于下一次回复。")
         self.setupButton.hide()
         if not self.cands and not self._busy:
@@ -963,7 +1010,9 @@ class Overlay:
             self.log(f"[填入失败] {type(e).__name__}: {e}")
             self.log(f"[填入失败堆栈] {' '.join(traceback.format_exc().split())[:300]}")
             return
-        self.set_status("已尝试填入，请确认内容后发送。", "success")
+        self.set_status("全自动：已填入并发送。" if settings.auto_fill()
+                        else "已填入并发送。" if settings.auto_send()
+                        else "已尝试填入，请确认内容后发送。", "success")
 
     def _copy(self, index):
         if self._busy or not self._current or index >= len(self.cands):
@@ -1215,8 +1264,9 @@ class Overlay:
             self.invalidate_replies()
             self.set_status(lambda: T("正在浏览「{name}」，只看不填；切回这个会话才能用。").format(name=self._shown))
 
-    def show(self, result):
-        """按推荐顺序展示，按钮始终绑定 candidates 的原始索引。"""
+    def show(self, result, auto=False):
+        """按推荐顺序展示，按钮始终绑定 candidates 的原始索引。
+        auto=True 只有「刚生成的新结果」才传——从缓存恢复的旧建议绝不能自动发出去。"""
         self.cands = result["candidates"]
         self.set_busy(False)
         self._current = bool(self.cands)
@@ -1230,6 +1280,7 @@ class Overlay:
             scores = [None] * len(self.cands)
         # 按概率降序排，推荐位（API 给的 choice）强制第一，同分按原索引
         order = sorted(range(len(self.cands)), key=lambda i: (i != best, -(scores[i] or 0), i))
+        self._best = order[0] if order else 0
         for position, index in enumerate(order):
             card = _ReplyCard(self, index, recommended=index == best, number=position, score=scores[index])
             self.replyBox.addWidget(card)
@@ -1256,8 +1307,37 @@ class Overlay:
         bind(self.updated, lambda: updated_at + " " + T("更新"))
         if self.cands:
             self.set_status("建议已更新，选一句适合你的回复", "success")
+            if auto:  # 只对刚生成的结果开全自动；切换会话恢复的旧建议不触发
+                self._maybe_auto_fill()
         else:
             self.set_status("未生成可用回复，请等待下一条新消息。", "error")
+
+    def _maybe_auto_fill(self):
+        """全自动：候选一出来就把推荐那条填进微信并发出去。
+        条件不满足就什么都不做——开关没开、不是当前会话、候选已失效，一律不碰。"""
+        if not settings.auto_fill() or not self.cands or not self._current:
+            return
+        if self._shown != self._chat:  # 正在浏览别的会话，微信开着的不是它，填了会串会话
+            return
+        index = self._best if 0 <= self._best < len(self.cands) else 0
+        text = self.cands[index]
+        if text == self._auto_filled:  # 同一段内容不重复发
+            return
+        self._auto_filled = text
+        # 留 0.8 秒缓冲：界面先画出来，人想反悔还有机会关开关或切会话。
+        # 别设太长——群聊一条接一条，太长会被后面的消息不断打断。
+        self.after(800, lambda: self._auto_fill_now(index, text))
+
+    def _auto_fill_now(self, index, text):
+        """缓冲到期后复核：会话切走了、或者候选已经换了一批，就放弃。
+        注意不查 self._current —— 群聊里消息一条接一条，缓冲期内来新消息会把它置 False，
+        但那只是说「又有新消息了」，手上这条候选仍然有效，不该因此丢掉不发。"""
+        if not settings.auto_fill() or self._shown != self._chat:
+            return
+        if index >= len(self.cands) or self.cands[index] != text:
+            return
+        self.set_status("全自动：正在填入并发送…", "busy")
+        self._fill(index)
 
     def _clear_cards(self):
         for card in self.cards:

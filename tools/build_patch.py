@@ -33,6 +33,10 @@ MODULES = {
     "core.engine": "core/engine.py",
     "app.settings": "app/settings.py",
     "app.overlay": "app/overlay.py",
+    "app.fill": "app/fill.py",
+    "app.capture": "app/capture.py",
+    "app.worker": "app/worker.py",
+    "app.ocr": "app/ocr.py",
 }
 MAIN_SOURCE = "main.py"
 MAIN_ENTRY = "main"          # CArchive 里的条目名没有 .py

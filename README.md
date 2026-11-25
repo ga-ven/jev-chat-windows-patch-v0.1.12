@@ -1,36 +1,33 @@
-# JevChat-Windows：判断模型自定义来源补丁（v0.1.12 版）
+# JevChat-Windows v0.1.12 增强补丁：自定义判断来源 + 自动发送
 
-给 [JevChat-Windows](https://github.com/jev-chat/jev-chat-windows) **v0.1.12** 的 exe 补一个来源选项：
-「判断 · Jev」除了 OpenRouter 和 TypeSafe 直连，还能自己填 Base URL 和密钥，跟起草模型那边的自定义一样。
+给 [JevChat-Windows](https://github.com/jev-chat/jev-chat-windows) **v0.1.12** 的 exe 加两个能力：
+
+1. **判断模型自定义来源** —— 「判断 · Jev」除了 OpenRouter / TypeSafe 直连，还能自己填 Base URL 和密钥
+2. **自动发送** —— 填入微信输入框后自动按 Enter 发出去；更进一步有「全自动回复」，候选一出来就自己填、自己发
 
 > 只适用于官方 **v0.1.12** 的 `jev-chat-windows.exe`
 > （sha256 `4f0b79c63cbfbb283edcac71c32c07c038089127cb7c2926c9d6a3126119fec8`，18,632,863 字节）。
 > 脚本会核对，对不上就不动手。
 
-## 和上游那个补丁仓库的关系
+## ⚠️ 先读这段
 
-功能来自 [XiaoRui114514/jev-chat-windows-custom-jev](https://github.com/XiaoRui114514/jev-chat-windows-custom-jev)，
-那个仓库的补丁**只做 v0.1.11**（写死了 v0.1.11 的 sha256），直接套到 v0.1.12 上会被拒绝。
+**自动发送是上游明确拒绝做的功能。** 上游的
+[Issue #1](https://github.com/jev-chat/jev-chat-windows/issues/1) 就是「建议增加个自动回复功能」，
+作者按 `not planned` 关闭，原话：
 
-也不能硬绕过去 —— v0.1.11 → v0.1.12 之间上游动了补丁覆盖的 6 个文件里的 4 个：
+> 这条不会做，是项目的硬边界，不是优先级问题。**发送永远由人来按。**
+> 程序只做到「把候选填进输入框」，不发回车、不点发送按钮，代码里也没有任何发送路径。
+> 理由：① 这是个回复辅助，不是聊天机器人，最后一眼必须是人看的；
+> ② 自动发送就变成了替用户在微信里说话的自动化行为，这已经触碰微信的使用规则。
 
-| 文件 | v0.1.12 的改动 |
-| --- | --- |
-| `app/overlay.py` | +225 −137（大改） |
-| `main.py` | +22 −10 |
-| `app/settings.py` | +9 −1 |
-| `core/providers.py`<br>`core/jev_client.py`<br>`core/engine.py` | **完全没动** |
+这份补丁**违背了上游这个设计原则**。风险自己担：
 
-补丁的原理是整块替换这些模块的字节码，直接覆盖会把 v0.1.12 新增的
-`app/i18n.py`（界面语言 / 韩语）、`app/chatapps.py`、`app/ocr_windows.py` 架空
-—— 因为 `app/worker.py`、`app/capture.py` 还是新版，会去调已经被回退的接口。
+- 微信的发送键必须设成「Enter 发送」。设成 Ctrl+Enter 的话，自动发送只会换行，消息发不出去
+- 输入框里如果还留着你打了一半的草稿，会连同本次粘贴一起被发出去
+- 发出去的消息收不回来
+- 持续自动回复（尤其群聊）的行为特征很像机器人，理论上存在被判定异常的风险
 
-所以这里**没有复制上游的补丁包**，而是把上游补丁的净改动
-**移植到 v0.1.12 的真实源码上**，再重新编译进 exe：
-
-- `core/providers.py`、`core/jev_client.py`、`core/engine.py`：v0.1.12 一字未改，直接取上游补丁版
-- `app/settings.py`、`app/overlay.py`、`main.py`：以 v0.1.12 源码为底，只把补丁改动搬上去
-  （保留 v0.1.12 自己的 `bind()` i18n 风格，界面语言切换不会把新增的 Base URL 行刷没）
+默认全部关闭，开了才会生效。
 
 ## 用法
 
@@ -39,50 +36,102 @@
    - 脚本按 sha256 找官方 v0.1.12 的 `jev-chat-windows.exe`：桌面快捷方式、下载、文档目录都翻一遍。
    - 找不到就把 exe（或它所在的文件夹）拖到 `安装补丁.bat` 上。
    - 程序开着也没关系，脚本会先关掉它；原 exe 备份成 `jev-chat-windows.exe.bak`。
-3. 打开程序 → 设置 → 模型 → 判断 · Jev：来源选「自定义 · OpenAI 兼容」
-   → 填 Base URL（一般要带 `/v1`）→ 填这一家的密钥
-   （换来源要重填一次，留空会继续用上一把）→ 点「获取模型」挑一个 → 保存设置。
+3. 打开程序 → **设置 → 回复偏好**，两个开关按需打开：
+
+| 开关 | 行为 |
+| --- | --- |
+| **填入后自动发送** | 你点「填入」→ 粘进输入框后自动按 Enter 发出。仍需你点一下 |
+| **全自动回复** | 候选一出来就自己填、自己发，连「填入」都不用点。留 0.8 秒缓冲，期间关开关或切会话就不发 |
+
+4. 判断来源（可选）：设置 → 模型 → 判断 · Jev → 来源选「自定义 · OpenAI 兼容」→ 填 Base URL
+   （一般带 `/v1`）→ 填密钥（换来源要重填一次，留空会继续用上一把）→ 点「获取模型」挑一个 → 保存。
 
 还原：双击 `卸载补丁.bat`，它会从 `.bak` 拷回来。`检查补丁.bat` 只看状态不改文件。
-
-> 因为官方 v0.1.12 的 release 只有一个 exe，所有下载到的人 sha256 都一样，
-> 所以这份补丁包对任何官方 v0.1.12 安装都通用，不用自己重新构建。
+只想退掉自动发送、保留自定义来源？在设置里把开关关掉就行，不用换文件。
 
 ## 补了什么
 
+补丁模块从 5 个扩到 **9 个**，`src/` 下按上游路径原样放着：
+
 | 文件 | 改动 |
 | --- | --- |
-| `core/providers.py` | `JEV_PROVIDERS` 多两条：`custom_openai`、`custom_typesafe`；`JEV_CUSTOM` 跟着扩 |
+| `core/providers.py` | `JEV_PROVIDERS` 多 `custom_openai`、`custom_typesafe`；`JEV_CUSTOM` 跟着扩 |
 | `core/jev_client.py` | 两种自定义来源的判断和取模型；两条手写 HTTP 合成一个 `_post_json` |
 | `core/engine.py` | `analyze()` 多一个 `jev_base_url` 参数 |
-| `app/settings.py` | 存/读 `config.json` 里的 `jev_base_url` |
-| `app/overlay.py` | 设置页给判断这组加 Base URL 行（TypeSafe 那种提示别带 `/v1`），说明文案跟着改 |
-| `main.py` | 把 `jev_base_url` 传给 `analyze()` |
+| `app/settings.py` | 存/读 `jev_base_url`、`auto_send`、`auto_fill` |
+| `app/overlay.py` | Base URL 行、两个自动发送开关、底部文案联动、全自动触发逻辑 |
+| `app/fill.py` | `fill()` 加 `auto_send`；剪贴板写不进去时降级逐字输入；点击坐标兜底 |
+| `app/capture.py` | `find_chat_hwnd` 跳过「窗口在但抓不到画面」的僵尸窗口 |
+| `app/worker.py` | 标题和消息区都跳过左侧会话列表 |
+| `app/ocr.py` | `who_said` 加位置兜底（右边缘靠左的不可能是自己发的） |
+| `main.py` | 传参；填入前重新找窗口；触发条件改成「这批里有对方的话就分析」 |
 
-改动就是这 6 个文件，`src/` 下按上游路径原样放着，其余代码没动。
+## 途中修掉的上游 bug（微信 4.2 + 暗色主题下才暴露）
+
+这些不是新功能，是上游在微信 4.2 上本来就不工作的地方：
+
+**1. 消息区把左侧会话列表也 OCR 进去了**
+
+暗色主题下会话列表和聊天区底色完全一样（都是 `[30,30,31]`），`chat_area()` 分不开，
+`x0` 退化成整个窗口左边缘（8）。于是「腾讯新闻」「文件传输助手」「微信团队」这些**列表条目
+被当成对方说的话**，连锁导致：会话名显示 `?`、生成的回复像在描述人而不是回话、
+把用户自己的消息当成对方（「自己接话」）。修法是标题和消息区都跳过会话列表那 300px。
+
+**2. 窗口句柄会被复用**
+
+微信重建窗口后，旧句柄会落到一个 **160×28 的托盘小窗**上（坐标 `-32000,-32000`）。
+拿它算点击坐标是负数 → 点到屏幕外；但 `fill()` 不抛异常，界面照样显示「✓ 已尝试填入」，
+**看着成功实际啥也没干**。修法：每次填之前重新找窗口，并校验 area 是否还合理。
+
+**3. 多开时挑中「僵尸窗口」**
+
+同时开多个微信实例时，没在用的那些 `IsWindowVisible` 仍是 True、窗口矩形也正常，
+但 `PrintWindow` 抓出来是一张只有 2 种颜色的白板（DWM 没在画它）。
+判据不能用像素方差（白板只有边框那点深色也能把方差撑到 22+），得用**主导颜色占比**。
+
+**4. 剪贴板被别的程序长期占用**
+
+`OpenClipboard` 连续失败时原来直接报错。现在降级为 `SendInput` + `KEYEVENTF_UNICODE`
+逐字输入，绕开输入法和剪贴板，中文也能进。
+
+**5. 全自动会被群聊打断**
+
+候选生成后要等缓冲区，群聊一条接一条，缓冲期内来新消息会把候选标记成「已失效」，
+全自动于是主动放弃。改成只要候选内容还在、会话没切就照发。
+
+## 和上游那个补丁仓库的关系
+
+「判断模型自定义来源」的功能来自
+[XiaoRui114514/jev-chat-windows-custom-jev](https://github.com/XiaoRui114514/jev-chat-windows-custom-jev)，
+那个仓库的补丁**只做 v0.1.11**（写死了 v0.1.11 的 sha256），直接套到 v0.1.12 上会被拒绝。
+
+也不能硬绕过去 —— v0.1.11 → v0.1.12 之间上游大改了 `app/overlay.py`（+225 −137）、
+`main.py`、`app/settings.py`。补丁原理是整块替换模块字节码，直接覆盖会把 v0.1.12 新增的
+`app/i18n.py`（界面语言 / 韩语）、`app/chatapps.py`、`app/ocr_windows.py` 架空。
+
+所以这里**没有复制上游的补丁包**，而是把净改动**移植到 v0.1.12 的真实源码上**再重新编译。
+自动发送那部分是本仓库自己写的。
 
 ## 两条自定义来源的区别
 
 | 来源 | 接什么 | Base URL |
 | --- | --- | --- |
 | **自定义 · OpenAI 兼容** | 任意 chat/completions 接口 | 一般要带 `/v1` |
-| **自定义 · TypeSafe 兼容** | TypeSafe 协议的镜像，比如 TeamoRouter 的 `jev` | **只到域名，别带 `/v1`**（SDK 自己拼 `/v1/systemone`） |
+| **自定义 · TypeSafe 兼容** | TypeSafe 协议的镜像 | **只到域名，别带 `/v1`**（SDK 自己拼 `/v1/systemone`） |
 
 OpenAI 兼容那条是把 7 道判断题打包成一轮 `chat/completions` 发过去，用你自己的模型答。
-**判断质量取决于那个模型读不读得懂这套题目**，不是真 Jev；个别题答不成约定格式会被丢掉，
-一次判断全部失败会退回原来的老路（盲起草 + 判断排序一次问完）。
-想要真 Jev，选 OpenRouter、TypeSafe 直连，或用 TypeSafe 兼容那条。
+**判断质量取决于那个模型读不读得懂这套题目**，不是真 Jev。想要真 Jev，选 OpenRouter、
+TypeSafe 直连，或用 TypeSafe 兼容那条。
 
 ## 验证过什么
 
-- **全量字节码校验**：解出补丁后 exe 的 PYZ，5434 个模块全部能 `marshal.loads` 反序列化，
-  与原版数量一致；TOC 逐项比对 —— 5445 个模块里，**除补丁的 5 个外其余 5440 个零差异**。
-- **构建可复现**：从同一个原版 exe 重新跑一遍，得到的补丁版 sha256 稳定是
-  `f6d475a892e82486f82f76ef83ae1e1d18ae7ee1ebe3606030b65ce327a4b2a0`
-  （18,712,150 字节）。
-- **实跑**：打完的 exe 在 Windows 11 上正常启动；写 `config.json` 把判断来源设成自定义后，
-  Base URL 行正确出现并读到值；判断和起草两组各有独立的 Base URL，互不干扰；
-  v0.1.12 的界面语言、韩语支持都在，版本号仍是 v0.1.12。
+- **全量字节码校验**：补丁后 exe 的 PYZ 解出来，5434 个模块全部能 `marshal.loads`，
+  与原版数量一致；TOC 逐项比对，除补丁的 9 个外其余零差异。
+- **拼接自检**：用本仓库 `patch/` 里的 6 个载荷按 `apply.ps1` 的逻辑重新拼一遍原版 exe，
+  得到的大小 `18,741,859` 和 sha256 `fd2be7af…` 与 manifest 完全一致。
+- **实跑**：Windows 11 + 微信 4.2.0.13（`Weixin.exe`）实测 —— 能识别群名、读出消息、
+  生成候选；点「填入」能把文字送进微信输入框（未开启自动发送时不发出）。
+- **回归过的场景**：暗色主题、多开微信、窗口最小化后恢复、剪贴板被占用。
 
 ## 限制
 
@@ -90,9 +139,12 @@ OpenAI 兼容那条是把 7 道判断题打包成一轮 `chat/completions` 发�
   换版本要拿 `tools/build_patch.py` 重新生成一份。
 - **程序更新到新版本后补丁就没了**（更新会覆盖 exe），重新打一遍就行；
   注意更新可能把 `.bak` 一起顶掉，重要的话先另存一份原版 exe。
+- 微信会话列表宽度按 **300px**（100% DPI）估算。如果你把 Windows 缩放调得很高，
+  这个偏移可能不够，表现为会话名又变成 `?` —— 那时把 `app/worker.py` 里的 300 调大。
 - 两条界面文案改成了「三家给的是同一个 Jev，必填。」和
   「看上面选的来源：OpenRouter、TypeSafe 直连，或你自己的服务。」
-  i18n 韩语表里还是按老文案（「两家…」）存的 key，所以切到韩语时这两条会显示中文。功能不受影响。
+  i18n 韩语表里还是按老文案存的 key，所以切韩语时这两条显示中文。功能不受影响。
+- 群聊里如果有人只发表情包或图片，OCR 读不到内容，不会触发回复。
 
 ## 重新构建
 
@@ -102,8 +154,8 @@ OpenAI 兼容那条是把 7 道判断题打包成一轮 `chat/completions` 发�
 python tools/build_patch.py --exe <官方 exe 路径> --out patch --patched-exe out/jev-chat-windows.exe --app-version v0.1.12
 ```
 
-`tools/build_patch.py` 是上游补丁作者的脚本，这里只加了一个 `--app-version` 参数
-（原版把 `v0.1.11` 写在代码里，不改的话 manifest 会标错版本）。
+`tools/build_patch.py` 基于上游补丁作者的脚本，这里加了 `--app-version` 参数，
+并把 `MODULES` 扩到 9 个（`app/capture.py`、`app/worker.py`、`app/ocr.py`、`app/fill.py` 都进去了）。
 
 ## 许可与致谢
 
@@ -111,6 +163,6 @@ MIT，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
 
 - 应用本体与 `src/` 的基础代码：Copyright (c) 2026 rezoch340 and the jev-chat contributors，
   以及 Finderchangchang / jev-chat-jarvis。
-- 「判断模型自定义来源」这个补丁的原始实现：XiaoRui114514，
+- 「判断模型自定义来源」的原始实现：XiaoRui114514，
   <https://github.com/XiaoRui114514/jev-chat-windows-custom-jev>。
-- 本仓库只做版本移植，功能设计不是原创。
+- 自动发送与上述兼容性修复：本仓库。
