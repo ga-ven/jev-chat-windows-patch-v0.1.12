@@ -34,6 +34,30 @@ _RELATIONSHIPS = [
     ("家人", "family"), ("自定义", None),
 ]
 
+# 「填入荔致教育示例」按的模板。写清楚三件事：要收集哪六项、怎么答疑惑、哪些话不能说。
+_ROLE_PRESET = """你是「荔致教育」的客服小姐姐，在微信上以同事的口吻跟家长聊，不用官方腔。
+
+【你要做的事】
+1. 家长来问家教，先把需求问全（一次只问一两项，别像查户口）：
+   ① 地点（城市+区+小区，越具体越好）② 年级和科目 ③ 学生情况（性别、基础、性格）
+   ④ 上课时间（一周几次、周几、上午还是下午）⑤ 课酬预算 ⑥ 对老师的要求（性别、经验、风格）
+2. 问全了就复述一遍请家长确认，例如：「我记一下：罗湖鸿翔花园，高一化学，女孩，一周一次周六上午或下午，340 一次，要女老师、节奏紧凑，对吧」
+3. 解答家长请家教的疑惑：怎么匹配老师、多久能安排、第一次课怎么试、不合适能不能换
+4. 信息确认后引导下一步（登记需求、约试课），语气是帮忙，不是催单
+
+【怎么说话】
+- 一条只说一件事，两三句够了，别发大段
+- 用「您」，自称「我」或「我们」
+- 不用「亲」，不堆感叹号，不发机构介绍长文
+- 家长一次问很多，先答最关心的那个，其余下一条再说
+- 家长已经在别处找过老师、或嫌贵时，先接住情绪再问需求，不辩解
+
+【不能说】
+- 不承诺提分、不保证效果、不承诺「一定能找到」
+- 不报价、不报老师名单、不说「我们有 xx 个老师」——这些让教务确认后回复
+- 不提转账、红包、私下收款
+- 拿不准就说「这个我确认一下回您」，绝不编"""
+
 
 def _choice(answers, name):
     return T(CHOICE_LABELS[name].get((answers.get(name) or {}).get("choice"), "暂未判断"))
@@ -233,10 +257,11 @@ class _ReplyCard(_Surface):
 
 class Overlay:
     def __init__(self, on_fill, on_toggle_capture=None, on_target_change=None, result_of=None,
-                 on_toggle_debug=None, on_language_changed=None):
+                 on_toggle_debug=None, on_language_changed=None, on_open_ledger=None):
         """result_of(会话名) → 那个会话上次的结果或 None；切着看别的会话时用它把旧结果放回来。
         on_target_change(会话名, 人名) → 用户在群里挑了回复对象。
-        on_toggle_debug(开不开) → 开关调试视图那个独立窗口。"""
+        on_toggle_debug(开不开) → 开关调试视图那个独立窗口。
+        on_open_ledger() → 打开家教需求台账。"""
         self.app = QApplication.instance() or QApplication([])
         setTheme(Theme.LIGHT)
         setThemeColor(_GREEN, save=False)
@@ -245,6 +270,7 @@ class Overlay:
         self.on_target_change = on_target_change
         self.on_toggle_debug = on_toggle_debug
         self.on_language_changed = on_language_changed
+        self.on_open_ledger = on_open_ledger
         self.result_of = result_of
         self.cands = []
         self.cards = []
@@ -557,6 +583,24 @@ class Overlay:
         style_label.setBuddy(self.styleEdit)
         box.addWidget(self.styleEdit)
         box.addWidget(self._hint("候选本来就照着你最近发的消息模仿；这里可以再补一句你自己的口吻。"))
+        role_label = _tlabel("客服角色设定（可选）", 13)
+        box.addWidget(role_label)
+        self.roleEdit = PlainTextEdit()
+        self.roleEdit.setFixedHeight(132)
+        bind(self.roleEdit, "例如：你是「荔致教育」的客服小姐姐，用同事口吻跟家长聊……", "setPlaceholderText")
+        bind(self.roleEdit, "客服角色设定", "setAccessibleName")
+        role_label.setBuddy(self.roleEdit)
+        box.addWidget(self.roleEdit)
+        preset_row = QHBoxLayout()
+        preset_row.addStretch(1)
+        self.rolePresetButton = PushButton("填入荔致教育示例")
+        self.rolePresetButton.clicked.connect(self._fill_role_preset)
+        preset_row.addWidget(self.rolePresetButton)
+        box.addLayout(preset_row)
+        box.addWidget(self._hint(
+            "填了就按这个身份说话：称呼、话术边界、业务口径都以这里为准，不再模仿你平时聊天的口吻。"
+            "留空就是原来的样子。没写进去的业务事实（价格、老师名单）模型不会自己编。"
+        ))
         context_label = _tlabel("参考上下文", 13)
         box.addWidget(context_label)
         self.contextBox = SpinBox()
@@ -603,6 +647,37 @@ class Overlay:
             "留 1.5 秒缓冲，这期间关掉开关或切走会话就不发了。"
             "只在微信当前开着的那个会话上生效，浏览别的会话时不填。"
         ))
+        switch_row = QHBoxLayout()
+        switch_row.addWidget(_tlabel("自动切换会话", 13), 1)
+        self.autoSwitchSwitch = SwitchButton()
+        bind(self.autoSwitchSwitch, "开", "setOnText")
+        bind(self.autoSwitchSwitch, "关", "setOffText")
+        bind(self.autoSwitchSwitch, "自动切换会话", "setAccessibleName")
+        switch_row.addWidget(self.autoSwitchSwitch)
+        box.addLayout(switch_row)
+        box.addWidget(self._hint(
+            "自动点开微信会话列表里带未读红点的会话，逐个生成回复，处理完再切下一个。"
+            "跟「全自动回复」一起开就是无人值守：切过去 → 生成 → 发出 → 下一个。"
+            "关着时只处理你自己打开的那个会话。切会话会抢一下微信的焦点。"
+        ))
+        group_row = QHBoxLayout()
+        group_row.addWidget(_tlabel("自动切换时也处理群聊", 13), 1)
+        self.groupSwitchSwitch = SwitchButton()
+        bind(self.groupSwitchSwitch, "开", "setOnText")
+        bind(self.groupSwitchSwitch, "关", "setOffText")
+        bind(self.groupSwitchSwitch, "自动切换时也处理群聊", "setAccessibleName")
+        group_row.addWidget(self.groupSwitchSwitch)
+        box.addLayout(group_row)
+        box.addWidget(self._hint(
+            "默认关：群名带「(3)」这种人数后缀的、以及微信团队/腾讯新闻这类系统会话，"
+            "自动切换会跳过，不会自动往里发消息。"
+        ))
+        ledger_row = QHBoxLayout()
+        ledger_row.addWidget(self._hint("客服角色开着时，每次回复完会把家长需求抽出来写进台账，按会话名去重更新。"), 1)
+        self.ledgerButton = PushButton("打开需求台账")
+        self.ledgerButton.clicked.connect(self._open_ledger)
+        ledger_row.addWidget(self.ledgerButton)
+        box.addLayout(ledger_row)
         multi_row = QHBoxLayout()
         multi_row.addWidget(_tlabel("分条发送", 13), 1)
         self.multiSwitch = SwitchButton()
@@ -903,6 +978,17 @@ class Overlay:
         self.relationshipBox.blockSignals(blocked)
         self._refresh_history_text()
 
+    def _fill_role_preset(self):
+        """把示例角色填进输入框。直接覆盖——想保留自己的稿子就别点这个按钮。"""
+        self.roleEdit.setPlainText(_ROLE_PRESET)
+        self.roleEdit.setFocus()
+
+    def _open_ledger(self):
+        """打开需求台账。还没生成过就先说清楚，别让用户以为按钮坏了。"""
+        if self.on_open_ledger is not None and self.on_open_ledger():
+            return
+        self._settings_feedback("还没有需求台账：客服角色开着、并且成功生成过回复之后才会有。", error=True)
+
     def _load_settings(self):
         self._load_language()
         relationship = settings.relationship()
@@ -912,6 +998,7 @@ class Overlay:
         self.relEdit.setText(relationship if _RELATIONSHIPS[index][1] is None else "")
         self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
         self.styleEdit.setText(settings.style())
+        self.roleEdit.setPlainText(settings.role_prompt())
         self.contextBox.setValue(settings.context())
         self.targetSwitch.setChecked(settings.reply_target())
         self._set_group(self.jev, settings.jev_provider(), settings.jev_model())
@@ -922,6 +1009,8 @@ class Overlay:
         self.updateSwitch.setChecked(settings.check_update())
         self.autoSendSwitch.setChecked(settings.auto_send())
         self.autoFillSwitch.setChecked(settings.auto_fill())
+        self.autoSwitchSwitch.setChecked(settings.auto_switch())
+        self.groupSwitchSwitch.setChecked(settings.switch_groups())
         self.multiSwitch.setChecked(settings.multi_send())
         self.realAtSwitch.setChecked(settings.real_at())
         self.set_debug_switch(settings.debug_view())  # 屏蔽信号地拨，别在加载时开关一遍窗口
@@ -972,6 +1061,9 @@ class Overlay:
                           draft_base_url_text=draft_base,
                           reply_target_on=self.targetSwitch.isChecked(),
                           style_text=self.styleEdit.text().strip(),
+                          role_prompt_text=self.roleEdit.toPlainText().strip(),
+                          auto_switch_on=self.autoSwitchSwitch.isChecked(),
+                          switch_groups_on=self.groupSwitchSwitch.isChecked(),
                           thinking_on=self.thinkingSwitch.isChecked(),
                           check_update_on=self.updateSwitch.isChecked(),
                           auto_send_on=self.autoSendSwitch.isChecked(),

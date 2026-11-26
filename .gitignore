@@ -4,3 +4,7 @@ dist/
 *.new
 *.exe
 *.exe.bak
+
+# 构建 / 自测留下的字节码
+__pycache__/
+*.pyc

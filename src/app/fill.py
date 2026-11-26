@@ -97,6 +97,32 @@ def type_text(text):
         time.sleep(0.004)  # 敲太快微信会丢字
 
 
+def foreground(hwnd):
+    """把窗口抬到前台。SetForegroundWindow 有前台窗口保护，普通后台进程会被拒；AttachThreadInput 绕过。"""
+    if u32.GetForegroundWindow() == hwnd:
+        return
+    fg = u32.GetForegroundWindow()
+    fg_tid = u32.GetWindowThreadProcessId(fg, None)
+    our_tid = k32.GetCurrentThreadId()
+    u32.AttachThreadInput(our_tid, fg_tid, True)
+    u32.SetForegroundWindow(hwnd)
+    u32.AttachThreadInput(our_tid, fg_tid, False)
+    time.sleep(0.15)  # 给微信一点时间响应前台切换
+
+
+def click_at(x, y, settle=0.1):
+    """在屏幕绝对坐标 (x, y) 点一下左键，点完把光标放回原处。
+    「自动切换会话」点会话行就用它：坐标由调用方按窗口矩形 + 行中心算好。"""
+    old = w.POINT()
+    u32.GetCursorPos(ctypes.byref(old))
+    u32.SetCursorPos(int(x), int(y))
+    time.sleep(0.06)
+    u32.mouse_event(0x2, 0, 0, 0, 0)  # 左键按下
+    u32.mouse_event(0x4, 0, 0, 0, 0)  # 抬起
+    time.sleep(settle)
+    u32.SetCursorPos(old.x, old.y)
+
+
 def fill(hwnd, area, text, auto_send=False, at_target=None):
     """area = 消息区 (x0, y0, x1, y1)；输入框就在底线 y1 下面。"""
     from app.capture import unminimize
@@ -132,16 +158,7 @@ def fill(hwnd, area, text, auto_send=False, at_target=None):
             cy = r.top + y1 + 40  # 分隔线下 40px = 输入框文字区
     cy = min(max(cy, r.top + 40), r.bottom - 40)  # 无论如何别越过窗口上下边界
     unminimize(hwnd)
-
-    # SetForegroundWindow 有前台窗口保护，普通后台进程会被拒；AttachThreadInput 绕过
-    fg = u32.GetForegroundWindow()
-    if fg != hwnd:
-        fg_tid = u32.GetWindowThreadProcessId(fg, None)
-        our_tid = k32.GetCurrentThreadId()
-        u32.AttachThreadInput(our_tid, fg_tid, True)
-        u32.SetForegroundWindow(hwnd)
-        u32.AttachThreadInput(our_tid, fg_tid, False)
-        time.sleep(0.15)  # 给微信一点时间响应前台切换
+    foreground(hwnd)
 
     old = w.POINT()
     u32.GetCursorPos(ctypes.byref(old))

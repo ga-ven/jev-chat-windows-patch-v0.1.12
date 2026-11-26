@@ -7,7 +7,9 @@
 两个模型（判断 Jev / 起草语言模型）的来源和 key 在独立设置页填写，不用改代码。IDE 里直接 Run。
 """
 import ctypes
+import csv
 import multiprocessing
+import os
 import queue
 import random
 import re
@@ -17,11 +19,11 @@ import traceback
 from collections import deque
 
 from app import settings, update, worker
-from app.capture import find_chat_hwnd
-from app.fill import fill
+from app.capture import chat_area, find_chat_hwnd, grab, unread_rows
+from app.fill import click_at, fill
 from app.overlay import Overlay
 from app.version import VERSION
-from core.engine import analyze
+from core.engine import analyze, extract_lead
 from app.i18n import T
 
 # {会话名: {history, result, rev, target, senders}}：每个会话各自的上下文、上次结果和版本号，互不串味
@@ -29,9 +31,24 @@ from app.i18n import T
 # 只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
 # senders：这个群里发过言的人，去重、最近的排最前；target：用户挑的回复对象（None = 跟着最近那个走）
 chats = {}
-state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": ""}
+state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": "",
+         "next_switch": 0.0, "scanning": False}
 results = queue.Queue()
 update_result = queue.Queue()  # 独立小队列，别跟 results 的 (kind, r, title, revision) 形状搅在一起
+scan_result = queue.Queue()    # 自动切换：后台线程扫出来的未读行
+
+# 自动切换会话的节奏。扫描只是一次 PrintWindow + 一小块像素统计，几十毫秒，但没必要一直扫。
+SWITCH_IDLE = 10.0        # 列表里没有未读：隔这么久再看一眼
+SWITCH_DWELL_AUTO = 7.0   # 会自动发：点开、生成、发出，留 7 秒再切下一个
+SWITCH_DWELL_MANUAL = 25.0  # 不自动发：留足时间让人看候选、自己点填入
+
+# 这些会话不是人，自动切换会点开看一眼但绝不自动发消息
+_SYSTEM_CHATS = ("微信团队", "文件传输助手", "腾讯新闻", "订阅号", "服务号", "公众号",
+                 "微信支付", "微信运动", "微信收款助手", "折叠的群聊")
+_GROUP_RE = re.compile(r"[（(]\s*\d+\s*[)）]\s*$")
+
+LEAD_COLUMNS = ["更新时间", "家长/会话", "地点", "年级科目", "学生", "上课时间", "课酬", "老师要求", "备注"]
+_ledger_lock = threading.Lock()
 
 
 def chat_of(title):
@@ -45,6 +62,129 @@ def target_of(title):
     if chat["target"] in chat["senders"]:
         return chat["target"]
     return chat["senders"][0] if chat["senders"] else None
+
+
+def is_group(title):
+    """群名尾巴上带人数括号的算群聊。单人备注名很少这么写，误判概率够低。"""
+    return bool(_GROUP_RE.search(title or ""))
+
+
+def is_system_chat(title):
+    return any(k in (title or "") for k in _SYSTEM_CHATS)
+
+
+def may_auto_send(title):
+    """自动切换巡场时，允许哪些会话直接发出去。
+    不开自动切换就是原来的行为（只处理你正看着的那个会话），这里一律放行。"""
+    if not settings.auto_switch():
+        return True
+    if is_system_chat(title):
+        return False
+    if is_group(title) and not settings.switch_groups():
+        return False
+    return True
+
+
+def save_lead(title, lead):
+    """把一条家教需求写进 CSV 台账：按会话名去重，新抽到的非空字段覆盖旧的，空字段不抹掉已有内容。
+    同一个文件可能被几个分析线程同时写，加锁 + 先写 .tmp 再替换，别留半个文件。"""
+    path = settings.ledger_path()
+    row = {"更新时间": time.strftime("%Y-%m-%d %H:%M"), "家长/会话": title,
+           "地点": lead.get("addr", ""), "年级科目": lead.get("subject", ""),
+           "学生": lead.get("student", ""), "上课时间": lead.get("schedule", ""),
+           "课酬": lead.get("pay", ""), "老师要求": lead.get("demand", ""),
+           "备注": lead.get("note", "")}
+    with _ledger_lock:
+        rows, order = {}, []
+        try:
+            with open(path, encoding="utf-8-sig", newline="") as f:
+                for old in csv.DictReader(f):
+                    key = (old.get("家长/会话") or "").strip()
+                    if not key:
+                        continue
+                    if key not in rows:
+                        order.append(key)
+                    rows[key] = {k: (old.get(k) or "") for k in LEAD_COLUMNS}
+        except (OSError, csv.Error):
+            rows, order = {}, []  # 文件不在 / 读坏了：从头建一份，别把这次的需求丢了
+        if title in rows:
+            for k, v in row.items():
+                if v:
+                    rows[title][k] = v
+        else:
+            rows[title] = row
+            order.append(title)
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8-sig", newline="") as f:  # BOM：Excel 直接认出中文
+                writer = csv.DictWriter(f, fieldnames=LEAD_COLUMNS)
+                writer.writeheader()
+                for key in order:
+                    writer.writerow(rows[key])
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
+
+
+def open_ledger():
+    """打开台账；还没生成过就返回 False，交给界面提示。"""
+    path = settings.ledger_path()
+    if not os.path.exists(path):
+        return False
+    try:
+        os.startfile(path)  # noqa: S606 —— 就是让系统用默认程序打开这个 csv
+        return True
+    except OSError:
+        return False
+
+
+def scan_unread_bg():
+    """后台抓一帧，找出会话列表里带未读徽标的行。扔队列给 tick，UI 线程不碰截图。"""
+    try:
+        hwnd, _ = find_chat_hwnd()
+        frame, rect = grab(hwnd)
+        if frame is None:
+            scan_result.put(None)
+            return
+        area = chat_area(frame)
+        # 认不出消息区（窗口太小/刚拖过）就按窗口宽度的经验比例估一下聊天区左边界
+        x0 = area[0] if area else int(frame.shape[1] * 0.34)
+        scan_result.put((hwnd, rect, x0, unread_rows(frame, x0)))
+    except Exception:
+        scan_result.put(None)
+
+
+def drive_switch():
+    """自动切换会话：扫未读 → 点最上面那个 → 等它生成/发出 → 冷却 → 再扫。
+    只做「点一下会话行」，剩下的全交给原来的采集→分析→填入那条链，不另开一套。"""
+    if not settings.auto_switch() or child is None or not capture_on.is_set():
+        return
+    now = time.time()
+    try:
+        hwnd, rect, x0, rows = scan_result.get_nowait()
+    except queue.Empty:
+        hwnd = rect = x0 = None
+        rows = []
+    else:
+        state["scanning"] = False
+        if hwnd is None or not rows:
+            state["next_switch"] = now + SWITCH_IDLE
+        else:
+            y = rows[0]  # 最上面那个有未读的
+            left, top = rect[0], rect[1]
+            # 横向点在会话行中间偏右：避开头像和昵称，也别压到徽标本体
+            click_at(left + int(x0 * 0.72), top + y)
+            state["next_switch"] = now + (SWITCH_DWELL_AUTO if settings.auto_fill()
+                                          else SWITCH_DWELL_MANUAL)
+            return
+    if state["busy"] or state["scanning"] or now < state["next_switch"]:
+        return
+    state["scanning"] = True
+    threading.Thread(target=scan_unread_bg, daemon=True).start()
 
 
 def split_reply(text, limit=3):
@@ -97,6 +237,8 @@ def fill_reply(text):
         fill(state["hwnd"], state["area"], part, auto_send=auto, at_target=at)
         if i < len(parts) - 1:
             time.sleep(random.uniform(1.8, 3.2))  # 真人打字也有停顿，连发会像机器人
+    # 自动巡场时，发完这一轮就把下一个会话的切换往后推一点，别刚发完就抢焦点
+    state["next_switch"] = time.time() + (2.0 if auto else 4.0)
 
 
 def spawn_worker():
@@ -156,19 +298,33 @@ def on_toggle_capture(on):
 
 def analyze_bg(msgs, title, revision, reply_to=None):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
+    role = settings.role_prompt()
     try:
-        results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
-                                   model=settings.draft_model() or None,
-                                   provider=settings.draft_provider(),
-                                   base_url=settings.draft_base_url() or None,
-                                   reply_to=reply_to, style=settings.style(),
-                                   thinking=settings.thinking(),
-                                   jev_provider=settings.jev_provider(),
-                                   jev_model=settings.jev_model() or None,
-                                   jev_base_url=settings.jev_base_url() or None),
-                     title, revision))
+        r = analyze(msgs, settings.relationship(), context=settings.context(),
+                    model=settings.draft_model() or None,
+                    provider=settings.draft_provider(),
+                    base_url=settings.draft_base_url() or None,
+                    reply_to=reply_to, style=settings.style(),
+                    thinking=settings.thinking(),
+                    jev_provider=settings.jev_provider(),
+                    jev_model=settings.jev_model() or None,
+                    jev_base_url=settings.jev_base_url() or None,
+                    role=role)
+        results.put(("ok", r, title, revision))
     except Exception as e:
         results.put(("err", f"{T('分析失败: ')}{e}", title, revision))
+        return
+    # 客服角色开着才顺手抽一次需求：这是替家长登记，跟回不回得上无关，失败了也不影响回复。
+    if not role:
+        return
+    try:
+        lead = extract_lead(msgs, provider=settings.draft_provider(),
+                            model=settings.draft_model() or None,
+                            base_url=settings.draft_base_url() or None)
+        if lead:
+            save_lead(title, lead)
+    except Exception:
+        pass  # 抽取是附加功能，别把回复也拖下水
 
 
 def check_update_bg():
@@ -300,13 +456,15 @@ def tick():
             if kind == "ok":
                 chat_of(title)["result"] = r  # 先存着；正看着这个会话才立刻贴上去
                 if title == ov.current_chat():
-                    ov.show(r, auto=True)  # 刚生成、且正看着这个会话——全自动只认这种
+                    # 自动巡场时按会话类型放行：群聊/系统会话只看不发
+                    ov.show(r, auto=may_auto_send(title))
                 else:
                     ov.set_busy(False)
             else:
                 ov.set_busy(False)
                 ov.set_status("生成失败，请检查网络和服务设置；新消息到来后会重试。", "error")
                 ov.log(r)
+        drive_switch()  # 自动切换会话：每 50ms 经过这里，内部自己节流
     except Exception:
         traceback.print_exc()  # 一帧出错不退出
     ov.after(50, tick)
@@ -321,7 +479,7 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     child = dbg = None
     ov = Overlay(on_fill=fill_reply, on_toggle_capture=on_toggle_capture,
                  on_target_change=on_target_change, on_toggle_debug=set_debug,
-                 on_language_changed=on_language_changed,
+                 on_language_changed=on_language_changed, on_open_ledger=open_ledger,
                  result_of=lambda t: chats.get(t, {}).get("result"))
     try:
         state["hwnd"], found = find_chat_hwnd()

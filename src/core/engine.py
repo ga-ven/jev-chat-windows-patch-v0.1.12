@@ -27,7 +27,8 @@ def analyze(messages: list, relationship: str, model: str | None = None,
             timeout: float = 30, context: int = 10, provider: str = "deepseek",
             base_url: str | None = None, reply_to: str | None = None, style: str = "",
             thinking: bool = False, jev_provider: str = "openrouter",
-            jev_model: str | None = None, jev_base_url: str | None = None) -> dict:
+            jev_model: str | None = None, jev_base_url: str | None = None,
+            role: str = "") -> dict:
     """messages: [(from, text)] from ∈ {her, me}，最新一条在最后；
     群聊里可以带第三项 name（说这句话的人），单聊不带。
     context: 起草和判断各看最近多少条消息（用户设置里的「参考上下文」）。
@@ -37,6 +38,7 @@ def analyze(messages: list, relationship: str, model: str | None = None,
     reply_to: 群聊里指定回复给谁；None = 正常回复。
     style: 用户自己描述的说话风格，只影响起草。
     thinking: 起草时是否开思考模式，只影响起草，默认关。
+    role: 客服角色设定（设置里的「客服角色设定」），填了就按这个身份说话，只影响起草。
     model / jev_model = None 用该来源的默认模型。
 
     返回 {candidates, best_index, best_reply, scores, answers, usage, reply_to}。
@@ -62,7 +64,8 @@ def analyze(messages: list, relationship: str, model: str | None = None,
     candidates = draft_candidates(messages, relationship, provider=provider, model=model,
                                   base_url=base_url, timeout=timeout, keep=context,
                                   reply_to=reply_to, style=style, thinking=thinking,
-                                  guidance=guidance_text(answers) if judged else None)
+                                  guidance=guidance_text(answers) if judged else None,
+                                  role=role)
     if not candidates:  # 注入过滤可以把起草结果全扔掉；接着取 [0] 会 IndexError
         raise JevError("起草结果没有可用候选回复")
 
@@ -102,6 +105,70 @@ def analyze(messages: list, relationship: str, model: str | None = None,
         "usage": usage,
         "reply_to": reply_to,
     }
+
+
+_LEAD_SYSTEM = (
+    "你是家教机构的教务老师，负责把一段微信聊天整理成一条「家教需求单」。\n"
+    "只输出一个 JSON 对象，不要解释、不要代码围栏、不要多余的字。键固定为：\n"
+    "addr：地点，尽量写到「城市+区+小区/路段」，例如「深圳市罗湖区鸿翔花园」；\n"
+    "subject：年级+科目，例如「高一化学」；\n"
+    "student：学生情况，例如「女孩」「初二三，基础较弱」；\n"
+    "schedule：上课时间，例如「一周一次，周六上午或者下午」；\n"
+    "pay：课酬，例如「340/次」「一小时 200」；\n"
+    "demand：对老师的要求，例如「女老师，节奏紧凑」；\n"
+    "note：其他值得记的补充（学习目标、试课意愿等），没有就空。\n"
+    "规则：聊天里没提到的字段一律填空字符串，不许猜、不许编；"
+    "整段聊天里没有任何家教需求信息（比如只是闲聊、寒暄、已经成交后的话）就输出 {}。\n"
+    "聊天里 her 是家长，me 是机构客服。"
+)
+
+_LEAD_KEYS = ("addr", "subject", "student", "schedule", "pay", "demand", "note")
+
+
+def extract_lead(messages: list, provider: str = "deepseek", model: str | None = None,
+                 base_url: str | None = None, timeout: float = 25,
+                 thinking: bool = False, keep: int = 40) -> dict:
+    """把对话里家长的家教需求抽成结构化字段；没有需求就返回 {}。
+    跟 analyze 分开：这条只在客服角色模式下、每次分析成功后顺手跑一次，失败了不影响回复。"""
+    import json
+
+    try:
+        from .llm import chat
+        from .providers import DRAFT_PROVIDERS, LLM_ENV
+        from .jev_client import _api_key
+    except ImportError:
+        from llm import chat
+        from providers import DRAFT_PROVIDERS, LLM_ENV
+        from jev_client import _api_key
+    if not messages:
+        return {}
+    lines = []
+    for m in messages[-keep:]:
+        if isinstance(m, dict):
+            who, text, name = m.get("from"), m.get("text"), m.get("name")
+        else:
+            who, text = m[0], m[1]
+            name = m[2] if len(m) > 2 else None
+        lines.append(f"{name if who == 'her' and name else who}: {text}")
+    spec = DRAFT_PROVIDERS[provider]
+    content = chat(spec.protocol, base_url or spec.base, _api_key(LLM_ENV),
+                   model or spec.default, _LEAD_SYSTEM,
+                   ["聊天记录（最后一条是最新）:\n" + "\n".join(lines)],
+                   temperature=0.1, max_tokens=400, thinking=thinking,
+                   extra_body=spec.extra(thinking), headers=spec.headers, timeout=timeout)
+    text = (content or "").strip()
+    text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start:end + 1])
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out = {k: str(data.get(k) or "").strip()[:300] for k in _LEAD_KEYS}
+    return out if any(out.values()) else {}
 
 
 if __name__ == "__main__":

@@ -48,6 +48,23 @@ def style() -> str:
     """用户自己描述的说话风格（可选，自由文本），只喂给起草模型。默认空 = 只照着最近的消息模仿。"""
     return str(_read("style") or "")
 
+def role_prompt() -> str:
+    """客服角色设定（可选，多行）。填了就按这个身份说话：机构客服、话术边界、业务事实都写在这里。
+    默认空 = 原来的行为，只模仿用户本人的口吻。"""
+    return str(_read("role_prompt") or "")
+
+def auto_switch() -> bool:
+    """自动切换会话：自动点开有未读的会话，逐个生成回复。默认关。"""
+    return bool(_read("auto_switch", False))
+
+def switch_groups() -> bool:
+    """自动切换时是否也处理群聊。默认关——群里 auto 回复一句「客服」很容易出事。"""
+    return bool(_read("switch_groups", False))
+
+def ledger_path() -> str:
+    """家教需求台账（CSV）位置：跟 config.json 一样放在 exe 旁边，方便直接打开。"""
+    return os.path.join(_ROOT, "家教需求台账.csv")
+
 def language() -> str:
     """配置中选择的界面语言；启动环境变量的覆盖由 i18n 处理。"""
     return str(_read("lang") or "zh").strip().lower()
@@ -184,6 +201,8 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
          check_update_on: bool | None = None, debug_view_on: bool | None = None,
          auto_send_on: bool | None = None, auto_fill_on: bool | None = None,
          multi_send_on: bool | None = None, real_at_on: bool | None = None,
+         role_prompt_text: str | None = None, auto_switch_on: bool | None = None,
+         switch_groups_on: bool | None = None,
          lang_text: str | None = None) -> None:
     """每个参数为空/None = 保留当前值。两把 key 写进程环境 + HKCU\\Environment，不写任何文件。"""
     jev = jev_provider_text if jev_provider_text in JEV_PROVIDERS else jev_provider()
@@ -219,6 +238,9 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
         "auto_fill": flag(auto_fill_on, auto_fill),
         "multi_send": flag(multi_send_on, multi_send),
         "real_at": flag(real_at_on, real_at),
+        "role_prompt": keep(role_prompt_text, "role_prompt"),
+        "auto_switch": flag(auto_switch_on, auto_switch),
+        "switch_groups": flag(switch_groups_on, switch_groups),
     }
     lang = _read("lang") if lang_text is None else lang_text.strip().lower()
     if lang is not None:

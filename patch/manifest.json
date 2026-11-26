@@ -2,14 +2,14 @@
   "app": "jev-chat-windows",
   "app_version": "v0.1.12",
   "patch": "判断模型支持自定义 OpenAI 兼容来源",
-  "built_by": "3.11.9",
+  "built_by": "3.11.7",
   "original": {
     "sha256": "4f0b79c63cbfbb283edcac71c32c07c038089127cb7c2926c9d6a3126119fec8",
     "size": 18632863
   },
   "patched": {
-    "sha256": "98acfbc0697bcc73ec4b1e41885a69988f4ecc318671f85e4e3f584c4907b098",
-    "size": 18744485
+    "sha256": "8c65c2d642f876b7f22994160cc10dca9177ed0d311a6232be8910a35ec4ac59",
+    "size": 18770676
   },
   "archive_start": 320000,
   "main_entry": {
@@ -24,7 +24,7 @@
     "toc_offset": 17934003,
     "header_file": "pyz-header.bin",
     "header_length": 17,
-    "new_toc_offset": 18043821,
+    "new_toc_offset": 18065236,
     "append_file": "pyz-append.bin",
     "toc_file": "pyz-toc.bin"
   },
@@ -39,28 +39,30 @@
     "app.overlay",
     "app.settings",
     "app.worker",
+    "core.draft",
     "core.engine",
     "core.jev_client",
     "core.providers"
   ],
   "source_sha256": {
-    "app/capture.py": "f1a8997c0d825c29abaf695b2e0153b6c30045f269f6ef40a6e5228ee1782e14",
-    "app/fill.py": "1e73578abe81caf99f623e89fc5fcfd74d5d3938e38d0ab120e1bbbc621215b6",
+    "app/capture.py": "e02126d9d0a60309273bf6fcb70f2aceb3e58ea0445a9b9a6e3f0cf69a374426",
+    "app/fill.py": "b2df02d4334b1fa043d149f6ff3a221f0161083d9c586da89aebf77834c0f223",
     "app/ocr.py": "1afc7770b1da558ae0cb4ef6c7a631ff562b29d50c7d912ce3053e79f2052495",
-    "app/overlay.py": "6276aaf17b7c0ca689adaf6ede1a85f16ae87efcfeb8f2e5f44514a0b0e238f3",
-    "app/settings.py": "799a10486ced42d5d2bc3d462951820d68f730c44d4adf859ab3f20ec1c25aa8",
-    "app/worker.py": "fa58e4c3dc2c4e251fc9a0efd41f84b4d9fa95855ac48131a1658af94d27984c",
-    "core/engine.py": "a076a5aa493ff1200de70566514da0364edd24e15f60407a74b70ae465e6df65",
+    "app/overlay.py": "6e6e2ae726be753ddb52fee2e7c1703a9f6e18fcfb118baa66929d4fe85de053",
+    "app/settings.py": "25b1d37869d550c6dfab49a3baea52136c987831997350a5c5f6805c0ec10d3c",
+    "app/worker.py": "8cb802cdce22fa21460eb11f6609094138df8d13c30b29f9f7ee524fce258efb",
+    "core/draft.py": "8fde031ab5a19e15331c3dad294d97f997d549e43b2433565bbd387c1d408e69",
+    "core/engine.py": "ac2f82ba0087e55e15da4993302a7b2668e6bc1e068189a20ba2a82fa2b01a74",
     "core/jev_client.py": "c0a784cadeb37fef5d2c438aa907e9edaddf3dc1094de134c1c6f92a769cc0cf",
     "core/providers.py": "a1cec53f7c1163c2fc440403c7a05491806044184290dc37f1a086acd2ff369a",
-    "main.py": "b5a8af7c2fd75720d77a61c3a11402e1185c41c10b98e8d5ef9dea7a5c858aac"
+    "main.py": "7273d1403bb3b811b5e2b8eb4d87749a50bbcea4b8ce9a37c97743015a4ddc05"
   },
   "payload_sha256": {
-    "carchive-cookie.bin": "0e20311ffc4ceb0bb9d640fb6ea35299bcdd66293901cacca0559d07ee075707",
-    "carchive-toc.bin": "f69e1016590ce745ca01ea8434359cb782acd113dbe2a2fbc4d011d212a31797",
-    "main.bin": "e0c4432688befbf645268c555dfabcd48d6f5668e81ab747c3ae822098b6c96b",
-    "pyz-append.bin": "0a82e522a1351255ed3a91011e566943410610b97f265b0dfc1f72f37b2108e1",
-    "pyz-header.bin": "e78c19a6ec1f96fffd7e9a33f42d2d48ef3452a886d2b555372a18537e28c1f4",
-    "pyz-toc.bin": "2b3eff2f4fc1916a42f7b5dfd123ef11df3fe7deb0e0564b50ebc57ec7b9e6e4"
+    "carchive-cookie.bin": "f097d1d733981250e328614005934fe6260d480ae0766807bc86c3c1c3eb9b98",
+    "carchive-toc.bin": "02559ff7361e970b959e0d7f97448708c368e991c3c8a7a1a41d45daa150fc09",
+    "main.bin": "9aa5bba00b2240f825897464d87eedea64bf970fa9dd6b8910d1203d9230b849",
+    "pyz-append.bin": "51d64cabd6c425aa005a5b3b4376b83a676598753ff49cb62240a77d56a8fa1c",
+    "pyz-header.bin": "ba6acd6c7d9665476d65f1798df370136f50db686a8b82dd0a4843005f5773d0",
+    "pyz-toc.bin": "1375c9d0b67bf0ac68fc5105da0bb8a952980a75a0766e1f37b942ea2cae3946"
   }
 }

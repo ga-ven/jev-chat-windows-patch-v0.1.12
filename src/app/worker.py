@@ -18,6 +18,37 @@ def _err(q):
     q.put(("status", " ".join(traceback.format_exc().split())[-200:]))
 
 
+# 100% DPI 下「左侧图标栏 + 会话列表」的物理宽度。实测 175% 缩放下聊天区从 536px 开始，
+# 536 / 1.75 ≈ 306，所以按 DPI 等比放大即可，不能再写死 300。
+LIST_W_100 = 306
+
+
+def _dpi_of(hwnd):
+    """窗口所在显示器的 DPI。拿不到就当 96。"""
+    u = ctypes.windll.user32
+    try:
+        v = int(u.GetDpiForWindow(hwnd))
+        if v:
+            return v
+    except Exception:
+        pass
+    try:
+        g = ctypes.windll.gdi32
+        dc = g.CreateDCW("DISPLAY", None, None, None)
+        v = int(g.GetDeviceCaps(dc, 88))  # LOGPIXELSX
+        g.DeleteDC(dc)
+        if v:
+            return v
+    except Exception:
+        pass
+    return 96
+
+
+def _list_edge(hwnd):
+    """会话列表右边界，相对窗口左边的物理像素（截图是物理像素：run() 里 SetProcessDPIAware 了）。"""
+    return max(1, int(round(LIST_W_100 * _dpi_of(hwnd) / 96.0)))
+
+
 def _packet(full, area, title, reader, lines):
     """调试视图的一帧：整帧缩到长边 ≤1100 再走队列（原帧 2560 宽裸传要 20MB），只在内存里传，不落盘。
     整数步长切片够用，不引新依赖；框和坐标照发原始值，画的那边按 scale 折算。"""
@@ -36,6 +67,7 @@ def run(q, hwnd, enabled, debug_on, app_key=None):
     恢复时重开一个；readers 一直留着，去重状态不丢，恢复后不会把屏幕上的旧消息再报一遍。
     debug_on 置位才往队列里送整帧（一帧 2~3MB），关着一点额外活都不干。"""
     ctypes.windll.user32.SetProcessDPIAware()
+    list_edge = _list_edge(hwnd)  # 会话列表右边界，随 DPI 放大
     app = chatapps.get(app_key)
     cap = None
     readers = {}  # {会话名: Reader}，一个会话一套去重状态
@@ -78,11 +110,13 @@ def run(q, hwnd, enabled, debug_on, app_key=None):
                     if rect != last_area:
                         q.put(("area", rect))
                         last_area = rect
-                    # 头部：会话名在这里。但 x0 是整个窗口左边（暗色主题下 chat_area 分不出
-                    # 会话列表和聊天区，两者底色一样），这条带子里还躺着左边的「搜索」框，
-                    # 而 read_title 取的是「同一行最左边的文字」——会读到「搜索」而不是群名。
-                    # 跳过会话列表那 300px，只留聊天区。
-                    head_x0 = min(x0 + 300, max(x0, x1 - 120))
+                    # 头部：会话名在这里。x0 是否已经等于聊天区左边界，取决于主题：
+                    # 浅色主题下会话列表底色和聊天区不同，chat_area 能分出边界（x0 就是列表右边），
+                    # 这时再往后跳 300px 就会把群名开头和每行消息的左边一起裁掉；
+                    # 暗色主题下两者底色一样，x0 退化成整个窗口左边缘，才需要跳到 list_edge，
+                    # 否则「搜索」框和列表条目会被 read_title 当成群名（它取同一行最左边的文字）。
+                    left = x0 if x0 > list_edge * 0.7 else list_edge
+                    head_x0 = min(left, max(x0, x1 - 120))
                     crop = full[y_pane:y0, head_x0:x1]
                     if head is None or not np.array_equal(crop, head):  # 名字没动就别白跑一次 OCR
                         head = crop
@@ -95,10 +129,9 @@ def run(q, hwnd, enabled, debug_on, app_key=None):
                             title = name
                             q.put(("chat", title))
                     reader = readers.setdefault(title, Reader(app))
-                    # 消息区也要跳过左边的会话列表：x0 是整个窗口左边缘（暗色主题下
-                    # chat_area 分不出列表和聊天区），不跳的话「腾讯新闻」「文件传输助手」
-                    # 「微信团队」这些列表条目会被当成对方说的话，还会害得整段逻辑错乱。
-                    body_x0 = min(x0 + 300, max(x0, x1 - 200))
+                    # 消息区同理：不跳的话「腾讯新闻」「文件传输助手」「微信团队」这些
+                    # 列表条目会被当成对方说的话，还会害得整段逻辑错乱。
+                    body_x0 = min(left, max(x0, x1 - 200))
                     lines = reader.read(full[y0:y1, body_x0:x1], bg)
                     new = reader.new_lines(lines)
                     if new:

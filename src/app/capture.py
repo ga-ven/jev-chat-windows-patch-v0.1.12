@@ -65,6 +65,85 @@ def gives_frames(hwnd):
         return True
 
 
+def grab(hwnd):
+    """PrintWindow 抓一帧，返回 (RGB ndarray, (left, top, w, h))；抓不到返回 (None, None)。
+
+    这是给父进程「看一眼会话列表」用的：采集子进程走 WGC，父进程没必要为了几行事发再开一路采集，
+    PrintWindow 同步抓一次就够（1564×1132 大约 30~60ms）。坐标是物理像素——调用方要 SetProcessDPIAware。"""
+    try:
+        rect = wintypes.RECT()
+        u32.GetWindowRect(hwnd, ctypes.byref(rect))
+        w, h = rect.right - rect.left, rect.bottom - rect.top
+        if w < 200 or h < 200:
+            return None, None
+
+        class _BIH(ctypes.Structure):
+            _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
+                        ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
+                        ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                        ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                        ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                        ("biClrImportant", wintypes.DWORD)]
+
+        hdc = u32.GetWindowDC(hwnd)
+        if not hdc:
+            return None, None
+        mfc = gdi32.CreateCompatibleDC(hdc)
+        bmp = gdi32.CreateCompatibleBitmap(hdc, w, h)
+        try:
+            gdi32.SelectObject(mfc, bmp)
+            u32.PrintWindow(hwnd, mfc, 2)  # PW_RENDERFULLCONTENT
+            bmi = _BIH()
+            bmi.biSize = ctypes.sizeof(_BIH)
+            bmi.biWidth, bmi.biHeight = w, -h
+            bmi.biPlanes, bmi.biBitCount, bmi.biCompression = 1, 32, 0
+            buf = ctypes.create_string_buffer(w * h * 4)
+            gdi32.GetDIBits(mfc, bmp, 0, h, buf, ctypes.byref(bmi), 0)
+            arr = np.frombuffer(buf, dtype=np.uint8, count=w * h * 4).reshape(h, w, 4)
+            return np.ascontiguousarray(arr[:, :, 2::-1]), (rect.left, rect.top, w, h)  # BGRA → RGB
+        finally:
+            gdi32.DeleteObject(bmp)
+            gdi32.DeleteDC(mfc)
+            u32.ReleaseDC(hwnd, hdc)
+    except Exception:
+        return None, None
+
+
+# 微信未读徽标的红：亮红底白字，暗色主题下也是同一支红。免打扰那个铃铛是灰的，不会被这条规则命中。
+def _is_badge(px):
+    r, g, b = px[:, :, 0].astype(int), px[:, :, 1].astype(int), px[:, :, 2].astype(int)
+    return (r > 190) & (g < 135) & (b < 135) & ((r - g) > 80) & ((r - b) > 80)
+
+
+def unread_rows(frame, x0, band=170, min_pixels=3):
+    """从一帧里找出「有未读」的会话行，返回每行中心的 y（相对窗口顶部，物理像素）。
+
+    只看会话列表最右边那条窄带：未读徽标永远贴在行尾、紧挨着聊天区左边界 x0；
+    左边栏那个「总未读」徽标在 x0 的 20% 以内，被 band 排除掉；
+    头像和昵称在行的左边，也进不来。所以只要窄带里出现一块红，就是某一行有未读。"""
+    if frame is None:
+        return []
+    h, w = frame.shape[:2]
+    lo, hi = max(0, int(x0) - band), max(2, int(x0) - 4)
+    if hi <= lo:
+        return []
+    red = _is_badge(frame[:, lo:hi])
+    counts = red.sum(1)
+    rows = np.where(counts >= min_pixels)[0]
+    out, run = [], []
+    for y in rows:
+        if run and y - run[-1] <= 6:  # 同一条徽标被行高切成几段时并回来
+            run.append(int(y))
+        else:
+            if run:
+                out.append(run)
+            run = [int(y)]
+    if run:
+        out.append(run)
+    # 徽标直径约 34px（175% 缩放）：太细的是花哨头像溢出来的颜色，不要
+    return [int((r[0] + r[-1]) / 2) for r in out if 8 <= (r[-1] - r[0] + 1) <= h // 6]
+
+
 def find_chat_hwnd(want=None):
     """枚举可见顶层窗口，按进程名认出聊天软件，返回 (hwnd, ChatApp)。
     微信：同进程还有工具窗和看图窗，面积可能更大，所以按标题挑主窗口。

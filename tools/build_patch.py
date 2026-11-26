@@ -31,6 +31,7 @@ MODULES = {
     "core.providers": "core/providers.py",
     "core.jev_client": "core/jev_client.py",
     "core.engine": "core/engine.py",
+    "core.draft": "core/draft.py",
     "app.settings": "app/settings.py",
     "app.overlay": "app/overlay.py",
     "app.fill": "app/fill.py",
@@ -257,7 +258,7 @@ def main():
     for name, blob in payload.items():
         with open(os.path.join(args.out, name), "wb") as f:
             f.write(blob)
-    with open(os.path.join(args.out, "manifest.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(args.out, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
         f.write("\n")
     if args.patched_exe:
